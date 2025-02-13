@@ -106,7 +106,120 @@ void pre_auton(void) {
   Controller.ButtonA.pressed(detectColor);
 }
 
+// Global variables the modify drivePID
+bool resetDriveSenors = false;
+int desiredDistance;
+int desiredTurn;
+bool enableDrivePID = true;
 
+// Essentially returns the "sign" (not to be confused with sine) of x, if it's negative -1, positive 1 (+1), 0 returns 0
+// In order to preserve the sign of a number
+double signFunction(double x) {
+  if (x > 0.0) return 1.0;
+  if (x < 0.0) return -1.0;
+  return x;
+}
+
+// Function to use PID when driving tasks are needed
+void drivePID(){
+  // Define constants for use in PID
+  double kP = 0.5;
+  double kI = 0.05;
+  double kD = 0.05;
+
+  double turnkP = 0.5;
+  double turnkI = 0.05;
+  double turnkD = 0.05;
+
+  // Integral caps
+  int maxIntegral = 300;
+  int maxTurnIntegral = 300;
+  int integralBound = 3;
+
+  // Define variable that can change
+  int error;
+  int previousError = 0;
+  int totalError = 0;
+  int derivative;
+
+  int turnError;
+  int turnPreviousError = 0;
+  int turnTotalError = 0;
+  int turnDerivative;
+
+  while (enableDrivePID){
+    if (resetDriveSenors){
+      resetDriveSenors = false;
+      LeftSide.setPosition(0.0, degrees);
+      RightSide.setPosition(0.0, degrees);
+    }
+
+    // Finds the current rotations of all the drivetrain motors
+    int leftPosition = LeftSide.position(degrees);
+    int rightPosition = RightSide.position(degrees);
+
+    // -----------------------------------------
+    // Driving (lateral) PID
+    // -----------------------------------------
+
+    int averagePosition = (leftPosition + rightPosition) / 2;
+
+    // Potential (P)
+    error = averagePosition - desiredDistance;
+
+    // Integral (I)
+    if (abs(error) < integralBound){
+      totalError += error;
+    }
+    else{
+      totalError = 0;
+    }
+
+    totalError = abs(totalError) > maxIntegral ? signFunction(totalError) * maxIntegral : totalError;
+
+    // Derrivative (D)
+    derivative = error - previousError;
+
+    // Calculate volts based on constants and PID
+    double lateralVolts = (error * kP) + (derivative * kD) + (totalError * kI);
+
+    // -----------------------------------------
+    // Turning PID
+    // -----------------------------------------
+  
+    int turnDifference = leftPosition - rightPosition;
+
+    // TODO add inertial sensor and make turnDifference the value of the inertial sensor
+    
+    // Potential (P)
+    turnError = turnDifference - desiredTurn;
+    
+    // Integral (I)
+    if (abs(turnError) < integralBound){
+      turnTotalError += turnError;
+    }
+    else{
+      turnTotalError = 0;
+    }
+
+    turnTotalError = abs(turnTotalError) > maxTurnIntegral ? signFunction(turnTotalError) * maxTurnIntegral : turnTotalError;
+
+    // Derrivative (D)
+    turnDerivative = turnError - turnPreviousError;
+
+    // Calculate volts based on constants and PID
+    double turnVolts = (turnError * turnkP) + (turnDerivative * turnkD) + (turnTotalError * turnkI);
+
+    // Apply calculated voltage to drive train
+    LeftSide.spin(forward, lateralVolts + turnVolts, volt);
+    RightSide.spin(forward, lateralVolts - turnVolts, volt);
+
+    previousError = error;
+    turnPreviousError = turnError;
+    task::sleep(20);
+  }
+
+}
 
 /*---------------------------------------------------------------------------*/
 /*                                                                           */
